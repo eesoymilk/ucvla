@@ -1,0 +1,29 @@
+# Proxy DiT diffusion policy config
+# Data: mug_handover_webdataset (WebDataset, 24-step chunks, 20-D actions)
+
+n_users: 3
+bias_dim: 64
+hidden_size: 512
+depth: 8
+num_heads: 8
+pred_horizon: 24       # matches webdataset chunk size
+action_dim: 20         # matches webdataset 20-D action layout
+state_dim: 14          # 7-D EEF * 2 arms (zeros for proxy; not in webdataset)
+clip_dim: 768          # open_clip ViT-B/16 internal transformer dim
+
+lr: 0.001
+warmup_steps: 500
+max_steps: 10000
+batch_size: 64
+weight_decay: 0.01
+
+# UCVLA loss ablation flags
+lambda_triplet: 0.1    # set 0.0 to disable triplet loss
+lambda_ortho: 0.01     # set 0.0 to disable orthogonality loss
+triplet_margin: 0.5    # note: use decimal literals, not scientific notation (yaml parses 1e-3 as string)
+
+log_every: 10
+val_every: 500
+save_every: 2000
+
+wandb_project: ucvla-proxy

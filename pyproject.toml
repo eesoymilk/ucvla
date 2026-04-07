@@ -1,0 +1,24 @@
+[project]
+name = "ucvla-proxy"
+version = "0.1.0"
+requires-python = ">=3.12"
+
+dependencies = [
+    "torch>=2.5.0",
+    "torchvision",
+    "accelerate>=1.0.0",
+    "wandb",
+    "open-clip-torch",
+    "webdataset",
+    "einops",
+    "timm",
+    "pyyaml",
+    "numpy",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["models"]
