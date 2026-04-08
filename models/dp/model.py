@@ -225,7 +225,7 @@ class UCVLADiT(nn.Module):
         # --- Trainable UCVLA bias parameters (Stage 1 only) ---
         self.user_bias = nn.Embedding(n_users, bias_dim)
         self.bias_proj = nn.Linear(bias_dim, hidden_size)
-        nn.init.zeros_(self.user_bias.weight)
+        nn.init.normal_(self.user_bias.weight, std=0.02)
         nn.init.zeros_(self.bias_proj.bias)
 
         # --- Timestep embedding ---
@@ -260,7 +260,7 @@ class UCVLADiT(nn.Module):
         nn.init.zeros_(self.final_layer.linear.weight)
         nn.init.zeros_(self.final_layer.linear.bias)
         # Re-init bias params after apply (they have their own init)
-        nn.init.zeros_(self.user_bias.weight)
+        nn.init.normal_(self.user_bias.weight, std=0.02)
         nn.init.zeros_(self.bias_proj.bias)
 
     def forward(
