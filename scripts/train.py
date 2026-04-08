@@ -63,6 +63,8 @@ def main() -> None:
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
         level=logging.INFO,
     )
+    # Suppress console output for step-level logs — goes to file only
+    logging.getLogger().setLevel(logging.WARNING)
 
     if args.seed is not None:
         set_seed(args.seed)
@@ -74,8 +76,10 @@ def main() -> None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         log_file = os.path.join(log_dir, f"{timestamp}.log")
         fh = logging.FileHandler(log_file)
+        fh.setLevel(logging.INFO)
         fh.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(name)s - %(message)s"))
         logging.getLogger().addHandler(fh)
+        logging.getLogger().setLevel(logging.INFO)
         print(f"Logging to {log_file}")
 
     # ------------------------------------------------------------------ #
@@ -269,7 +273,7 @@ def main() -> None:
             trip = log_dict.get("loss/triplet", 0.0)
             ortho = log_dict.get("loss/ortho", 0.0)
             lr = log_dict["lr"]
-            progress_bar.write(
+            logger.info(
                 f"step {global_step:>6}  "
                 f"loss={loss.item():.4f}  mse={mse:.4f}  "
                 f"triplet={trip:.4f}  ortho={ortho:.4f}  "
