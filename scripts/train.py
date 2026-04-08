@@ -243,14 +243,28 @@ def main() -> None:
 
         log_dict["lr"] = lr_scheduler.get_last_lr()[0]
 
-        # Bias norms
+        # Bias norms + console log
         if accelerator.is_main_process and global_step % cfg["log_every"] == 0:
             unwrapped = accelerator.unwrap_model(runner)
             w = unwrapped.model.user_bias.weight
+            bias_norms = []
             for i in range(cfg["n_users"]):
-                log_dict[f"bias_norm/user_{i}"] = w[i].norm().item()
+                norm = w[i].norm().item()
+                log_dict[f"bias_norm/user_{i}"] = norm
+                bias_norms.append(f"u{i}={norm:.3f}")
             accelerator.log(log_dict, step=global_step)
             progress_bar.set_postfix(loss=f"{loss.item():.4f}")
+
+            mse = log_dict.get("loss/mse", loss.item())
+            trip = log_dict.get("loss/triplet", 0.0)
+            ortho = log_dict.get("loss/ortho", 0.0)
+            lr = log_dict["lr"]
+            logger.info(
+                f"step {global_step:>6}  "
+                f"loss={loss.item():.4f}  mse={mse:.4f}  "
+                f"triplet={trip:.4f}  ortho={ortho:.4f}  "
+                f"lr={lr:.2e}  bias_norms=[{', '.join(bias_norms)}]"
+            )
 
         if global_step % cfg["val_every"] == 0:
             run_val(global_step)
