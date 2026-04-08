@@ -16,10 +16,12 @@ Usage:
 import argparse
 import logging
 import os
+from datetime import datetime
 
 import torch
 import yaml
 from accelerate import Accelerator
+from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 from tqdm.auto import tqdm
@@ -30,7 +32,7 @@ from models.clip_encoder import CLIPEncoder
 from models.dp.model import UCVLADiT
 from models.dp.runner import UCVLADPRunner
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
@@ -67,6 +69,14 @@ def main() -> None:
 
     if accelerator.is_main_process:
         os.makedirs(args.output_dir, exist_ok=True)
+        log_dir = os.path.join("logs", os.path.basename(args.output_dir))
+        os.makedirs(log_dir, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_file = os.path.join(log_dir, f"{timestamp}.log")
+        fh = logging.FileHandler(log_file)
+        fh.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(name)s - %(message)s"))
+        logging.getLogger().addHandler(fh)
+        print(f"Logging to {log_file}")
 
     # ------------------------------------------------------------------ #
     # Build model                                                          #
