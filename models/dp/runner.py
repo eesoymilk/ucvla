@@ -132,7 +132,7 @@ class UCVLADPRunner(nn.Module):
         action_gt: torch.Tensor,
         clip_tokens: torch.Tensor,
         state: torch.Tensor,
-        user_id: torch.Tensor,
+        user_id: Optional[torch.Tensor] = None,
     ) -> tuple[torch.Tensor, dict[str, float]]:
         """Compute combined UCVLA loss.
 
@@ -166,13 +166,13 @@ class UCVLADPRunner(nn.Module):
         total = mse
         log: dict[str, float] = {"loss/mse": mse.item()}
 
-        if self.lambda_triplet > 0.0:
+        if self.lambda_triplet > 0.0 and user_id is not None:
             bias = self.model.user_bias(user_id)         # (B, bias_dim)
             trip = self._triplet_loss(bias, user_id)
             total = total + self.lambda_triplet * trip
             log["loss/triplet"] = trip.item()
 
-        if self.lambda_ortho > 0.0:
+        if self.lambda_ortho > 0.0 and user_id is not None:
             ortho = self._ortho_loss()
             total = total + self.lambda_ortho * ortho
             log["loss/ortho"] = ortho.item()

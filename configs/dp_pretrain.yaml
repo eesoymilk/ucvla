@@ -1,0 +1,29 @@
+# Stage 0: pretrain DiT backbone on all users mixed (no bias)
+# Goal: produce a capable action prediction backbone before freezing for Stage 1.
+
+n_users: 3       # kept for model construction; user_id=None during pretrain
+bias_dim: 64
+hidden_size: 512
+depth: 8
+num_heads: 8
+pred_horizon: 24
+action_dim: 20
+state_dim: 14
+clip_dim: 768
+
+lr: 0.0001
+warmup_steps: 1000
+max_steps: 20000
+batch_size: 64
+weight_decay: 0.01
+
+# No aux losses during pretrain
+lambda_triplet: 0.0
+lambda_ortho: 0.0
+triplet_margin: 0.5
+
+log_every: 10
+val_every: 500
+save_every: 2000
+
+wandb_project: ucvla-proxy-pretrain

@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-UCVLA proxy training script.
+Stage 0: pretrain the DiT backbone on all users mixed (no per-user bias).
 
-Trains user_bias + bias_proj with flow-matching + optional triplet/ortho loss.
-All other model weights (DiT backbone + CLIP encoder) are frozen.
+Trains all DiT parameters with flow-matching MSE loss and user_id=None.
+Saves backbone.pt at each checkpoint — loaded by scripts/train.py for Stage 1.
 
 Usage:
     PYTHONPATH="$(pwd)" uv run accelerate launch --num_processes=1 \\
-        scripts/train.py \\
-        --config configs/dp_ucvla.yaml \\
+        scripts/pretrain.py \\
+        --config configs/dp_pretrain.yaml \\
         --data_dir data/ \\
-        --output_dir outputs/dp_ucvla/stage1
+        --output_dir outputs/dp_ucvla/pretrain
 """
 
 import argparse
@@ -37,11 +37,9 @@ logger = get_logger(__name__)
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
-    p.add_argument("--config", type=str, default="configs/dp_ucvla.yaml")
+    p.add_argument("--config", type=str, default="configs/dp_pretrain.yaml")
     p.add_argument("--data_dir", type=str, default="data/")
-    p.add_argument("--output_dir", type=str, default="outputs/dp_ucvla/stage1")
-    p.add_argument("--backbone", type=str, default=None,
-                   help="Path to backbone.pt from pretrain.sh. Loads DiT weights before freezing.")
+    p.add_argument("--output_dir", type=str, default="outputs/dp_ucvla/pretrain")
     p.add_argument("--resume_from_checkpoint", type=str, default=None)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--num_workers", type=int, default=4)
@@ -65,7 +63,6 @@ def main() -> None:
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
         level=logging.INFO,
     )
-    # Suppress console output for step-level logs — goes to file only
     logging.getLogger().setLevel(logging.WARNING)
 
     if args.seed is not None:
@@ -73,7 +70,7 @@ def main() -> None:
 
     if accelerator.is_main_process:
         os.makedirs(args.output_dir, exist_ok=True)
-        log_dir = os.path.join("logs", os.path.basename(args.output_dir))
+        log_dir = os.path.join("logs", "dp_pretrain")
         os.makedirs(log_dir, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         log_file = os.path.join(log_dir, f"{timestamp}.log")
@@ -104,22 +101,13 @@ def main() -> None:
     )
     runner = UCVLADPRunner(
         model=model,
-        lambda_triplet=cfg["lambda_triplet"],
-        lambda_ortho=cfg["lambda_ortho"],
-        triplet_margin=cfg["triplet_margin"],
+        lambda_triplet=0.0,
+        lambda_ortho=0.0,
     )
+    # Do NOT freeze — train all DiT params
 
-    if args.backbone:
-        ckpt = torch.load(args.backbone, map_location="cpu")
-        missing, unexpected = model.load_state_dict(ckpt["model"], strict=False)
-        # user_bias and bias_proj are not in backbone.pt — they get random init
-        logger.info(f"Loaded backbone from {args.backbone}  (missing={missing}, unexpected={unexpected})")
-
-    runner.freeze_base()
-
-    trainable = runner.trainable_parameters()
-    n_trainable = sum(p.numel() for p in trainable)
-    logger.info(f"Trainable params: {n_trainable:,}  (user_bias + bias_proj)")
+    n_trainable = sum(p.numel() for p in runner.model.parameters())
+    logger.info(f"Trainable params: {n_trainable:,}  (full DiT backbone)")
 
     # ------------------------------------------------------------------ #
     # Data                                                                 #
@@ -146,7 +134,7 @@ def main() -> None:
     # Optimiser + scheduler                                                #
     # ------------------------------------------------------------------ #
     optimizer = torch.optim.AdamW(
-        trainable,
+        runner.model.parameters(),
         lr=cfg["lr"],
         weight_decay=cfg["weight_decay"],
     )
@@ -159,7 +147,7 @@ def main() -> None:
     )
 
     if accelerator.is_main_process:
-        accelerator.init_trackers(cfg.get("wandb_project", "ucvla-proxy"), config=cfg)
+        accelerator.init_trackers(cfg.get("wandb_project", "ucvla-proxy-pretrain"), config=cfg)
 
     # ------------------------------------------------------------------ #
     # Resume                                                               #
@@ -172,13 +160,11 @@ def main() -> None:
                 [d for d in os.listdir(args.output_dir) if d.startswith("step-")],
                 key=lambda x: int(x.split("-")[1]),
             )
-            ckpt_path = os.path.join(args.output_dir, dirs[-1], "ucvla_weights.pt") if dirs else None
+            ckpt_path = os.path.join(args.output_dir, dirs[-1], "backbone.pt") if dirs else None
 
         if ckpt_path and os.path.isfile(ckpt_path):
             ckpt = torch.load(ckpt_path, map_location="cpu")
-            unwrapped = accelerator.unwrap_model(runner)
-            unwrapped.model.user_bias.load_state_dict(ckpt["user_bias"])
-            unwrapped.model.bias_proj.load_state_dict(ckpt["bias_proj"])
+            accelerator.unwrap_model(runner).model.load_state_dict(ckpt["model"])
             global_step = ckpt.get("global_step", 0)
             logger.info(f"Resumed from {ckpt_path} at step {global_step}")
 
@@ -193,15 +179,12 @@ def main() -> None:
         unwrapped = accelerator.unwrap_model(runner)
         torch.save(
             {
-                "user_bias": unwrapped.model.user_bias.state_dict(),
-                "bias_proj": unwrapped.model.bias_proj.state_dict(),
-                "n_users": cfg["n_users"],
-                "bias_dim": cfg["bias_dim"],
+                "model": unwrapped.model.state_dict(),
                 "global_step": step,
             },
-            os.path.join(save_dir, "ucvla_weights.pt"),
+            os.path.join(save_dir, "backbone.pt"),
         )
-        logger.info(f"Saved checkpoint at step {step}")
+        logger.info(f"Saved backbone checkpoint at step {step}")
 
     def run_val(step: int) -> None:
         runner.eval()
@@ -212,20 +195,19 @@ def main() -> None:
                 images = batch["images"].to(accelerator.device)
                 actions = batch["actions"].to(accelerator.device, dtype=torch.float32)
                 states = batch["states"].to(accelerator.device, dtype=torch.float32)
-                user_ids = batch["user_ids"].to(accelerator.device)
 
                 clip_tokens = clip(images)
                 loss, _ = accelerator.unwrap_model(runner).compute_loss(
                     action_gt=actions,
                     clip_tokens=clip_tokens,
                     state=states,
-                    user_id=user_ids,
+                    user_id=None,
                 )
                 val_losses.append(loss.item())
 
         if accelerator.is_main_process and val_losses:
             mean_val = sum(val_losses) / len(val_losses)
-            logger.info(f"step {step}  val_loss={mean_val:.4f}")
+            logger.info(f"step {step:>6}  val_loss={mean_val:.4f}")
             accelerator.log({"val/loss": mean_val}, step=step)
 
         runner.train()
@@ -234,7 +216,7 @@ def main() -> None:
         range(global_step, cfg["max_steps"]),
         disable=not accelerator.is_local_main_process,
     )
-    progress_bar.set_description("Steps")
+    progress_bar.set_description("Pretrain")
 
     runner.train()
     for batch in train_loader:
@@ -244,7 +226,6 @@ def main() -> None:
         images = batch["images"].to(accelerator.device)
         actions = batch["actions"].to(accelerator.device, dtype=torch.float32)
         states = batch["states"].to(accelerator.device, dtype=torch.float32)
-        user_ids = batch["user_ids"].to(accelerator.device)
 
         with torch.no_grad():
             clip_tokens = clip(images)
@@ -254,7 +235,7 @@ def main() -> None:
                 action_gt=actions,
                 clip_tokens=clip_tokens,
                 state=states,
-                user_id=user_ids,
+                user_id=None,
             )
             accelerator.backward(loss)
             optimizer.step()
@@ -266,28 +247,12 @@ def main() -> None:
 
         log_dict["lr"] = lr_scheduler.get_last_lr()[0]
 
-        # Bias norms + console log
         if accelerator.is_main_process and global_step % cfg["log_every"] == 0:
-            unwrapped = accelerator.unwrap_model(runner)
-            w = unwrapped.model.user_bias.weight
-            bias_norms = []
-            for i in range(cfg["n_users"]):
-                norm = w[i].norm().item()
-                log_dict[f"bias_norm/user_{i}"] = norm
-                bias_norms.append(f"u{i}={norm:.3f}")
             accelerator.log(log_dict, step=global_step)
             progress_bar.set_postfix(loss=f"{loss.item():.4f}")
-
-            mse = log_dict.get("loss/mse", loss.item())
-            trip = log_dict.get("loss/triplet", 0.0)
-            ortho = log_dict.get("loss/ortho", 0.0)
             lr = log_dict["lr"]
-            logger.info(
-                f"step {global_step:>6}  "
-                f"loss={loss.item():.4f}  mse={mse:.4f}  "
-                f"triplet={trip:.4f}  ortho={ortho:.4f}  "
-                f"lr={lr:.2e}  bias_norms=[{', '.join(bias_norms)}]"
-            )
+            mse = log_dict.get("loss/mse", loss.item())
+            logger.info(f"step {global_step:>6}  loss={loss.item():.4f}  mse={mse:.4f}  lr={lr:.2e}")
 
         if global_step % cfg["val_every"] == 0:
             run_val(global_step)
@@ -295,10 +260,9 @@ def main() -> None:
         if global_step % cfg["save_every"] == 0:
             save_checkpoint(global_step)
 
-    # Final save
     save_checkpoint(global_step)
     accelerator.end_training()
-    logger.info("Training complete.")
+    logger.info("Pretraining complete.")
 
 
 if __name__ == "__main__":
