@@ -259,7 +259,7 @@ def main() -> None:
             trip = log_dict.get("loss/triplet", 0.0)
             ortho = log_dict.get("loss/ortho", 0.0)
             lr = log_dict["lr"]
-            logger.info(
+            progress_bar.write(
                 f"step {global_step:>6}  "
                 f"loss={loss.item():.4f}  mse={mse:.4f}  "
                 f"triplet={trip:.4f}  ortho={ortho:.4f}  "
