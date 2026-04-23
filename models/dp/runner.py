@@ -191,38 +191,42 @@ class UCVLADPRunner(nn.Module):
         w = self.sdtw_window
         starts = list(range(0, T - w + 1, self.sdtw_stride))
 
-        loss = torch.tensor(0.0, device=device)
-        count = 0
-
+        # Collect all valid triplet indices in one pass
+        anchors, positives, negatives = [], [], []
         for i in range(B):
             uid = user_id[i].item()
             pos_mask = (user_id == uid).clone()
             pos_mask[i] = False
             neg_mask = user_id != uid
-
             if not pos_mask.any() or not neg_mask.any():
                 continue
-
             pos_idx = pos_mask.nonzero(as_tuple=True)[0]
             neg_idx = neg_mask.nonzero(as_tuple=True)[0]
             j = pos_idx[torch.randint(len(pos_idx), (1,), device=device)].item()
             k = neg_idx[torch.randint(len(neg_idx), (1,), device=device)].item()
+            anchors.append(i)
+            positives.append(j)
+            negatives.append(k)
 
-            d_pos_per_window = []
-            d_neg_per_window = []
-            for s in starts:
-                a_win = pred[i, s : s + w].unsqueeze(0)  # (1, w, D)
-                p_win = pred[j, s : s + w].unsqueeze(0)
-                n_win = pred[k, s : s + w].unsqueeze(0)
-                d_pos_per_window.append(self._soft_dtw_batch(a_win, p_win))  # (1,)
-                d_neg_per_window.append(self._soft_dtw_batch(a_win, n_win))
+        if not anchors:
+            return torch.tensor(0.0, device=device)
 
-            d_pos = torch.stack(d_pos_per_window).min()
-            d_neg = torch.stack(d_neg_per_window).max()
-            loss = loss + F.relu(d_pos - d_neg + self.triplet_margin)
-            count += 1
+        a_idx = torch.tensor(anchors, device=device)
+        p_idx = torch.tensor(positives, device=device)
+        n_idx = torch.tensor(negatives, device=device)
 
-        return loss / max(count, 1)
+        # One batched DTW call per window instead of one call per (sample, window)
+        d_pos_windows, d_neg_windows = [], []
+        for s in starts:
+            a_win = pred[a_idx, s : s + w]  # (n, w, D)
+            p_win = pred[p_idx, s : s + w]
+            n_win = pred[n_idx, s : s + w]
+            d_pos_windows.append(self._soft_dtw_batch(a_win, p_win))  # (n,)
+            d_neg_windows.append(self._soft_dtw_batch(a_win, n_win))
+
+        d_pos = torch.stack(d_pos_windows).min(dim=0).values  # (n,)
+        d_neg = torch.stack(d_neg_windows).max(dim=0).values  # (n,)
+        return F.relu(d_pos - d_neg + self.triplet_margin).mean()
 
     # ------------------------------------------------------------------ #
     # Training                                                             #
