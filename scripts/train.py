@@ -65,8 +65,10 @@ def main() -> None:
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
         level=logging.INFO,
     )
-    # Suppress console output for step-level logs — goes to file only
-    logging.getLogger().setLevel(logging.WARNING)
+    # Keep console quiet (WARNING+); INFO goes to file only
+    for _h in logging.getLogger().handlers:
+        if isinstance(_h, logging.StreamHandler):
+            _h.setLevel(logging.WARNING)
 
     if args.seed is not None:
         set_seed(args.seed)
@@ -81,7 +83,6 @@ def main() -> None:
         fh.setLevel(logging.INFO)
         fh.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(name)s - %(message)s"))
         logging.getLogger().addHandler(fh)
-        logging.getLogger().setLevel(logging.INFO)
         print(f"Logging to {log_file}")
 
     # ------------------------------------------------------------------ #
@@ -271,31 +272,44 @@ def main() -> None:
 
         log_dict["lr"] = lr_scheduler.get_last_lr()[0]
 
-        # Bias norms + console log
         if accelerator.is_main_process and global_step % cfg["log_every"] == 0:
             unwrapped = accelerator.unwrap_model(runner)
             ub = unwrapped.model.user_bias
-            bias_norms = []
+
             for i in range(cfg["n_users"]):
-                mu_norm = ub.mu_embed.weight[i].norm().item()
-                mean_std = (0.5 * ub.log_var_embed.weight[i]).exp().mean().item()
-                log_dict[f"bias_norm/user_{i}"] = mu_norm
-                log_dict[f"bias_std/user_{i}"] = mean_std
-                bias_norms.append(f"u{i}={mu_norm:.3f}±{mean_std:.3f}")
+                log_dict[f"bias_norm/user_{i}"] = ub.mu_embed.weight[i].norm().item()
+                log_dict[f"bias_std/user_{i}"] = (0.5 * ub.log_var_embed.weight[i]).exp().mean().item()
+
+            # Cosim only at val_every — cheap but no need to clutter every step
+            if global_step % cfg["val_every"] == 0:
+                mu_vecs = ub.mu_embed.weight
+                mu_n = mu_vecs / mu_vecs.norm(dim=-1, keepdim=True).clamp(min=1e-8)
+                for a in range(cfg["n_users"]):
+                    for b in range(a + 1, cfg["n_users"]):
+                        log_dict[f"cosim/u{a}_u{b}"] = (mu_n[a] * mu_n[b]).sum().item()
+
             accelerator.log(log_dict, step=global_step)
-            progress_bar.set_postfix(loss=f"{loss.item():.4f}")
 
             mse = log_dict.get("loss/mse", loss.item())
             kl = log_dict.get("loss/kl", 0.0)
-            trip = log_dict.get("loss/triplet", 0.0)
             sdtw = log_dict.get("loss/sdtw", 0.0)
-            ortho = log_dict.get("loss/ortho", 0.0)
             lr = log_dict["lr"]
+            postfix: dict = {"mse": f"{mse:.4f}", "kl": f"{kl:.4f}", "sdtw": f"{sdtw:.4f}", "lr": f"{lr:.2e}"}
+            for a in range(cfg["n_users"]):
+                for b in range(a + 1, cfg["n_users"]):
+                    key = f"cosim/u{a}_u{b}"
+                    if key in log_dict:
+                        postfix[f"cos{a}{b}"] = f"{log_dict[key]:.3f}"
+            progress_bar.set_postfix(postfix)
+
+            cosim_str = ""
+            if "cosim/u0_u1" in log_dict:
+                pairs = [f"u{a}u{b}={log_dict[f'cosim/u{a}_u{b}']:.3f}"
+                         for a in range(cfg["n_users"]) for b in range(a + 1, cfg["n_users"])]
+                cosim_str = f"  cosim=[{', '.join(pairs)}]"
             logger.info(
-                f"step {global_step:>6}  "
-                f"loss={loss.item():.4f}  mse={mse:.4f}  kl={kl:.4f}  "
-                f"triplet={trip:.4f}  sdtw={sdtw:.4f}  ortho={ortho:.4f}  "
-                f"lr={lr:.2e}  bias=[{', '.join(bias_norms)}]"
+                f"step {global_step:>6}  loss={loss.item():.4f}  mse={mse:.4f}  "
+                f"kl={kl:.4f}  sdtw={sdtw:.4f}  lr={lr:.2e}{cosim_str}"
             )
 
         if global_step % cfg["val_every"] == 0:
