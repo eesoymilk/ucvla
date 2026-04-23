@@ -25,6 +25,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 
+from models.bias import VariationalUserBias
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -223,9 +225,8 @@ class UCVLADiT(nn.Module):
         self.action_dim = action_dim
 
         # --- Trainable UCVLA bias parameters (Stage 1 only) ---
-        self.user_bias = nn.Embedding(n_users, bias_dim)
+        self.user_bias = VariationalUserBias(n_users, bias_dim)
         self.bias_proj = nn.Linear(bias_dim, hidden_size)
-        nn.init.normal_(self.user_bias.weight, std=0.02)
         nn.init.zeros_(self.bias_proj.bias)
 
         # --- Timestep embedding ---
@@ -259,8 +260,7 @@ class UCVLADiT(nn.Module):
         # Zero-init output projection
         nn.init.zeros_(self.final_layer.linear.weight)
         nn.init.zeros_(self.final_layer.linear.bias)
-        # Re-init bias params after apply (they have their own init)
-        nn.init.normal_(self.user_bias.weight, std=0.02)
+        # Re-init bias_proj after apply; user_bias handles its own init
         nn.init.zeros_(self.bias_proj.bias)
 
     def forward(

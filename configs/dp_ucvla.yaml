@@ -18,9 +18,14 @@ batch_size: 64
 weight_decay: 0.01
 
 # UCVLA loss ablation flags
-lambda_triplet: 0.1    # set 0.0 to disable triplet loss
-lambda_ortho: 0.01     # set 0.0 to disable orthogonality loss
-triplet_margin: 0.5    # note: use decimal literals, not scientific notation (yaml parses 1e-3 as string)
+lambda_triplet: 0.0    # embedding-space triplet on sampled z; set 0.0 to disable
+lambda_ortho: 0.0      # orthogonality on mu vectors; set 0.0 to disable
+lambda_kl: 0.001       # KL regularization for variational embedding; set 0.0 to disable
+lambda_sdtw: 0.05      # windowed soft-DTW triplet on pred velocities; 0.0 = disabled (opt-in)
+triplet_margin: 0.5    # margin for both triplet losses (decimal literal — yaml parses 1e-3 as string)
+sdtw_window: 8         # window size in timesteps for soft-DTW triplet
+sdtw_stride: 4         # stride for sliding window (T=24, w=8, stride=4 → 5 windows)
+sdtw_gamma: 1.0        # soft-DTW smoothing: lower = sharper alignment
 
 log_every: 10
 val_every: 500

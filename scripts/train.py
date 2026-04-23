@@ -106,7 +106,12 @@ def main() -> None:
         model=model,
         lambda_triplet=cfg["lambda_triplet"],
         lambda_ortho=cfg["lambda_ortho"],
+        lambda_kl=cfg.get("lambda_kl", 0.001),
+        lambda_sdtw=cfg.get("lambda_sdtw", 0.0),
         triplet_margin=cfg["triplet_margin"],
+        sdtw_window=cfg.get("sdtw_window", 8),
+        sdtw_stride=cfg.get("sdtw_stride", 4),
+        sdtw_gamma=cfg.get("sdtw_gamma", 1.0),
     )
 
     if args.backbone:
@@ -269,24 +274,28 @@ def main() -> None:
         # Bias norms + console log
         if accelerator.is_main_process and global_step % cfg["log_every"] == 0:
             unwrapped = accelerator.unwrap_model(runner)
-            w = unwrapped.model.user_bias.weight
+            ub = unwrapped.model.user_bias
             bias_norms = []
             for i in range(cfg["n_users"]):
-                norm = w[i].norm().item()
-                log_dict[f"bias_norm/user_{i}"] = norm
-                bias_norms.append(f"u{i}={norm:.3f}")
+                mu_norm = ub.mu_embed.weight[i].norm().item()
+                mean_std = (0.5 * ub.log_var_embed.weight[i]).exp().mean().item()
+                log_dict[f"bias_norm/user_{i}"] = mu_norm
+                log_dict[f"bias_std/user_{i}"] = mean_std
+                bias_norms.append(f"u{i}={mu_norm:.3f}±{mean_std:.3f}")
             accelerator.log(log_dict, step=global_step)
             progress_bar.set_postfix(loss=f"{loss.item():.4f}")
 
             mse = log_dict.get("loss/mse", loss.item())
+            kl = log_dict.get("loss/kl", 0.0)
             trip = log_dict.get("loss/triplet", 0.0)
+            sdtw = log_dict.get("loss/sdtw", 0.0)
             ortho = log_dict.get("loss/ortho", 0.0)
             lr = log_dict["lr"]
             logger.info(
                 f"step {global_step:>6}  "
-                f"loss={loss.item():.4f}  mse={mse:.4f}  "
-                f"triplet={trip:.4f}  ortho={ortho:.4f}  "
-                f"lr={lr:.2e}  bias_norms=[{', '.join(bias_norms)}]"
+                f"loss={loss.item():.4f}  mse={mse:.4f}  kl={kl:.4f}  "
+                f"triplet={trip:.4f}  sdtw={sdtw:.4f}  ortho={ortho:.4f}  "
+                f"lr={lr:.2e}  bias=[{', '.join(bias_norms)}]"
             )
 
         if global_step % cfg["val_every"] == 0:
