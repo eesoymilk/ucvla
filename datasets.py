@@ -46,10 +46,12 @@ class SampleMapper:
         state = torch.zeros(1, self.state_dim, dtype=torch.float32)
 
         return {
-            "image": img_tensor,
-            "action": action,
-            "state": state,
-            "user_id": user_id,
+            "image":             img_tensor,
+            "action":            action,
+            "state":             state,
+            "user_id":           user_id,
+            "episode_idx":       int(meta.get("episode_idx", -1)),
+            "chunk_start_frame": int(meta.get("chunk_start_frame", -1)),
         }
 
 
@@ -95,8 +97,11 @@ def get_val_dataset(
 
 
 def collate_fn(examples: list[dict]) -> dict[str, torch.Tensor]:
-    images = torch.stack([e["image"] for e in examples])       # (B, 3, 224, 224)
-    actions = torch.stack([e["action"] for e in examples])     # (B, T, 20)
-    states = torch.stack([e["state"] for e in examples])       # (B, 1, state_dim)
-    user_ids = torch.tensor([e["user_id"] for e in examples], dtype=torch.long)  # (B,)
-    return {"images": images, "actions": actions, "states": states, "user_ids": user_ids}
+    return {
+        "images":             torch.stack([e["image"] for e in examples]),
+        "actions":            torch.stack([e["action"] for e in examples]),
+        "states":             torch.stack([e["state"] for e in examples]),
+        "user_ids":           torch.tensor([e["user_id"] for e in examples], dtype=torch.long),
+        "episode_idxs":       torch.tensor([e["episode_idx"] for e in examples], dtype=torch.long),
+        "chunk_start_frames": torch.tensor([e["chunk_start_frame"] for e in examples], dtype=torch.long),
+    }
