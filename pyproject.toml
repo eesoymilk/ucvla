@@ -14,6 +14,12 @@ dependencies = [
     "timm",
     "pyyaml",
     "numpy",
+    "zarr<3",
+    "imagecodecs[all]",
+    "matplotlib",
+    "jupyter",
+    "ipykernel",
+    "scipy",
 ]
 
 [build-system]

@@ -40,7 +40,7 @@ class SampleMapper:
         img = img.crop((0, 0, w, img.height))
         img_tensor = self.clip_transform(img)         # (3, 224, 224)
 
-        action = torch.from_numpy(sample["action.npy"].copy())  # (T, 20)
+        action = torch.from_numpy(sample["action.npy"].copy())  # (T, 10)
         meta: dict = sample["meta.json"]
         user_id = int(meta.get("user_id", -1))
         state = torch.zeros(1, self.state_dim, dtype=torch.float32)

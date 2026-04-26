@@ -1,5 +1,5 @@
 # Proxy DiT diffusion policy config
-# Data: mug_handover_webdataset (WebDataset, 24-step chunks, 20-D actions)
+# Data: mug_handover_webdataset (WebDataset, 24-step chunks, 10-D actions)
 
 n_users: 3
 bias_dim: 64
@@ -7,8 +7,8 @@ hidden_size: 512
 depth: 8
 num_heads: 8
 pred_horizon: 24       # matches webdataset chunk size
-action_dim: 20         # matches webdataset 20-D action layout
-state_dim: 14          # 7-D EEF * 2 arms (zeros for proxy; not in webdataset)
+action_dim: 10         # right arm only: 3D pos + 6D rot (continuous) + 1D gripper
+state_dim: 7           # 7-D EEF single arm (zeros for proxy; not in webdataset)
 clip_dim: 768          # open_clip ViT-B/16 internal transformer dim
 
 lr: 0.001
