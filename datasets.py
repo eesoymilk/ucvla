@@ -100,7 +100,25 @@ def get_val_dataset(
 ) -> wds.WebDataset:
     all_shards = sorted(glob.glob(os.path.join(shards_dir, "shard-*.tar")))
     assert all_shards, f"No shards found in {shards_dir}"
-    shards = val_shards if val_shards else [all_shards[-1]]
+    if val_shards:
+        shards = val_shards
+    else:
+        # Pick one shard per user from shard_index.json (scales to any number of users)
+        index_path = os.path.join(shards_dir, "shard_index.json")
+        if os.path.exists(index_path):
+            import json
+            with open(index_path) as f:
+                shard_index = json.load(f)  # {user_id_str: [shard_filename, ...]}
+            seen, shards = set(), []
+            for uid_str, uid_shards in sorted(shard_index.items()):
+                for s in uid_shards:
+                    full = os.path.join(shards_dir, s)
+                    if full not in seen:
+                        shards.append(full)
+                        seen.add(full)
+                        break
+        else:
+            shards = [all_shards[-1]]
 
     dataset = (
         wds.WebDataset(shards, shardshuffle=False, nodesplitter=_no_split,

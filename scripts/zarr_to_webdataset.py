@@ -121,6 +121,8 @@ def convert(
 
     sample_idx = shard_idx = n_skipped = 0
     tar = tarfile.open(os.path.join(out_dir, f"shard-{shard_idx:06d}.tar"), "w")
+    # shard_index: user_id → set of shard filenames that contain that user
+    shard_index: dict[int, set[str]] = {}
 
     for ep_idx in range(n_eps):
         ep_s, ep_e = int(ep_starts[ep_idx]), int(ep_ends[ep_idx])
@@ -157,12 +159,19 @@ def convert(
             add_to_tar(tar, key, "image.jpg", encode_image(ep_rgb[cs]))
             add_to_tar(tar, key, "action.npy", buf.getvalue())
             add_to_tar(tar, key, "meta.json", json.dumps(meta).encode())
+            shard_index.setdefault(user_id, set()).add(f"shard-{shard_idx:06d}.tar")
             sample_idx += 1
 
         if (ep_idx + 1) % 10 == 0 or ep_idx == n_eps - 1:
             print(f"  {ep_idx + 1}/{n_eps} episodes  {sample_idx} samples")
 
     tar.close()
+
+    index_path = os.path.join(out_dir, "shard_index.json")
+    with open(index_path, "w") as f:
+        json.dump({str(uid): sorted(shards) for uid, shards in shard_index.items()}, f, indent=2)
+    print(f"Wrote shard_index.json ({len(shard_index)} users)")
+
     print(f"\nDone: {n_eps - n_skipped} episodes, {sample_idx} samples, "
           f"{shard_idx + 1} shards → {out_dir}")
 
