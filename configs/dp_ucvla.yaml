@@ -27,7 +27,7 @@ sdtw_window: 8         # window size in timesteps for soft-DTW triplet
 sdtw_stride: 4         # stride for sliding window (T=24, w=8, stride=4 → 5 windows)
 sdtw_gamma: 1.0        # soft-DTW smoothing: lower = sharper alignment
 
-log_every: 10
+log_every: 50
 val_every: 1000
 save_every: 5000
 
