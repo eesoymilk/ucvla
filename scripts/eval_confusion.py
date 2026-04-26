@@ -38,6 +38,9 @@ def parse_args() -> argparse.Namespace:
                    help="Min mean chunk weight to be considered a preference chunk.")
     p.add_argument("--n_rollouts", type=int, default=5,
                    help="ODE rollouts per sample to reduce variance.")
+    p.add_argument("--val_shards", type=str, default=None,
+                   help="Comma-separated shard indices to use for val, e.g. '5,35,65'. "
+                        "Default: last shard only (may miss users).")
     p.add_argument("--batch_size", type=int, default=32)
     p.add_argument("--device", type=str, default="cuda")
     return p.parse_args()
@@ -91,7 +94,13 @@ def main() -> None:
     # Val data (with chunk_weights so meta.json is available)              #
     # ------------------------------------------------------------------ #
     shards_dir = os.path.join(args.data_dir, "mug_handover_webdataset")
-    val_ds = get_val_dataset(shards_dir, clip_transform, cfg["state_dim"])
+    val_shards = None
+    if args.val_shards:
+        import glob
+        all_shards = sorted(glob.glob(os.path.join(shards_dir, "shard-*.tar")))
+        val_shards = [all_shards[int(i)] for i in args.val_shards.split(",")]
+        print(f"Val shards: {[os.path.basename(s) for s in val_shards]}")
+    val_ds = get_val_dataset(shards_dir, clip_transform, cfg["state_dim"], val_shards)
     val_loader = torch.utils.data.DataLoader(
         val_ds, batch_size=args.batch_size, collate_fn=collate_fn, num_workers=2,
     )
