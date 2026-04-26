@@ -12,8 +12,8 @@ state_dim: 7           # 7-D EEF single arm (zeros for proxy; not in webdataset)
 clip_dim: 768          # open_clip ViT-B/16 internal transformer dim
 
 lr: 0.001
-warmup_steps: 500
-max_steps: 10000
+warmup_steps: 1000
+max_steps: 50000
 batch_size: 64
 weight_decay: 0.01
 
@@ -28,7 +28,7 @@ sdtw_stride: 4         # stride for sliding window (T=24, w=8, stride=4 → 5 wi
 sdtw_gamma: 1.0        # soft-DTW smoothing: lower = sharper alignment
 
 log_every: 10
-val_every: 500
-save_every: 2000
+val_every: 1000
+save_every: 5000
 
 wandb_project: ucvla-proxy

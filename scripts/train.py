@@ -108,11 +108,7 @@ def main() -> None:
         lambda_triplet=cfg["lambda_triplet"],
         lambda_ortho=cfg["lambda_ortho"],
         lambda_kl=cfg.get("lambda_kl", 0.001),
-        lambda_sdtw=cfg.get("lambda_sdtw", 0.0),
         triplet_margin=cfg["triplet_margin"],
-        sdtw_window=cfg.get("sdtw_window", 8),
-        sdtw_stride=cfg.get("sdtw_stride", 4),
-        sdtw_gamma=cfg.get("sdtw_gamma", 1.0),
     )
 
     if args.backbone:
@@ -291,10 +287,9 @@ def main() -> None:
             accelerator.log(log_dict, step=global_step)
 
             mse = log_dict.get("loss/mse", loss.item())
-            kl = log_dict.get("loss/kl", 0.0)
-            sdtw = log_dict.get("loss/sdtw", 0.0)
-            lr = log_dict["lr"]
-            postfix: dict = {"mse": f"{mse:.4f}", "kl": f"{kl:.4f}", "sdtw": f"{sdtw:.4f}", "lr": f"{lr:.2e}"}
+            kl  = log_dict.get("loss/kl", 0.0)
+            lr  = log_dict["lr"]
+            postfix: dict = {"mse": f"{mse:.4f}", "kl": f"{kl:.4f}", "lr": f"{lr:.2e}"}
             for a in range(cfg["n_users"]):
                 for b in range(a + 1, cfg["n_users"]):
                     key = f"cosim/u{a}_u{b}"
@@ -309,7 +304,7 @@ def main() -> None:
                 cosim_str = f"  cosim=[{', '.join(pairs)}]"
             logger.info(
                 f"step {global_step:>6}  loss={loss.item():.4f}  mse={mse:.4f}  "
-                f"kl={kl:.4f}  sdtw={sdtw:.4f}  lr={lr:.2e}{cosim_str}"
+                f"kl={kl:.4f}  lr={lr:.2e}{cosim_str}"
             )
 
         if global_step % cfg["val_every"] == 0:

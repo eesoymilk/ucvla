@@ -18,5 +18,5 @@ PYTHONPATH="$(pwd)" uv run accelerate launch \
     scripts/train.py \
     --config configs/dp_ucvla.yaml \
     --data_dir data/ \
-    --output_dir outputs/dp_ucvla/mse_kl_sdtw \
+    --output_dir outputs/dp_ucvla/stage1_10d \
     "$@"
