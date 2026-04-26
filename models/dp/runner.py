@@ -238,6 +238,7 @@ class UCVLADPRunner(nn.Module):
         clip_tokens: torch.Tensor,
         state: torch.Tensor,
         user_id: Optional[torch.Tensor] = None,
+        chunk_weights: Optional[torch.Tensor] = None,
     ) -> tuple[torch.Tensor, dict[str, float]]:
         """Compute combined UCVLA loss.
 
@@ -267,7 +268,11 @@ class UCVLADPRunner(nn.Module):
             state=state,
             user_id=user_id,
         )
-        mse = F.mse_loss(pred, target)
+        if chunk_weights is not None:
+            w = chunk_weights.unsqueeze(-1).to(dtype=pred.dtype)  # (B, T, 1)
+            mse = (w * (pred - target).pow(2)).mean()
+        else:
+            mse = F.mse_loss(pred, target)
         total = mse
         log: dict[str, float] = {"loss/mse": mse.item()}
 

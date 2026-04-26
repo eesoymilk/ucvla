@@ -42,6 +42,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--output_dir", type=str, default="outputs/dp_ucvla/stage1")
     p.add_argument("--backbone", type=str, default=None,
                    help="Path to backbone.pt from pretrain.sh. Loads DiT weights before freezing.")
+    p.add_argument("--chunk_weights", type=str, default=None,
+                   help="Path to chunk_weights.pt for preference-weighted MSE training.")
     p.add_argument("--resume_from_checkpoint", type=str, default=None)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--num_workers", type=int, default=4)
@@ -127,7 +129,7 @@ def main() -> None:
     # Data                                                                 #
     # ------------------------------------------------------------------ #
     shards_dir = os.path.join(args.data_dir, "mug_handover_webdataset")
-    train_ds = get_train_dataset(shards_dir, clip_transform, cfg["state_dim"])
+    train_ds = get_train_dataset(shards_dir, clip_transform, cfg["state_dim"], args.chunk_weights)
     val_ds = get_val_dataset(shards_dir, clip_transform, cfg["state_dim"])
 
     train_loader = torch.utils.data.DataLoader(
@@ -257,6 +259,7 @@ def main() -> None:
                 clip_tokens=clip_tokens,
                 state=states,
                 user_id=user_ids,
+                chunk_weights=batch.get("chunk_weights"),
             )
             accelerator.backward(loss)
             optimizer.step()
