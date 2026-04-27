@@ -20,6 +20,7 @@ from collections import defaultdict
 
 import torch
 import yaml
+from tqdm.auto import tqdm
 
 from datasets import get_val_dataset, collate_fn
 from models.clip_encoder import CLIPEncoder
@@ -36,7 +37,7 @@ def parse_args() -> argparse.Namespace:
                    help="Path to chunk_weights.pt. If omitted falls back to uniform MSE.")
     p.add_argument("--pref_threshold", type=float, default=1.2,
                    help="Min mean chunk weight to be considered a preference chunk.")
-    p.add_argument("--n_rollouts", type=int, default=5,
+    p.add_argument("--n_rollouts", type=int, default=1,
                    help="ODE rollouts per sample to reduce variance.")
     p.add_argument("--val_shards", type=str, default=None,
                    help="Comma-separated shard indices to use for val, e.g. '5,35,65'. "
@@ -116,7 +117,7 @@ def main() -> None:
     print(f"\nRunning preference-aware eval ({args.n_rollouts} rollouts/chunk)...")
 
     with torch.no_grad():
-        for batch in val_loader:
+        for batch in tqdm(val_loader, desc="eval"):
             images   = batch["images"].to(device)
             actions  = batch["actions"].to(device, dtype=dtype)
             states   = batch["states"].to(device, dtype=dtype)
