@@ -11,5 +11,4 @@ PYTHONPATH="$(pwd)" uv run python scripts/eval_confusion.py \
     --weights      "outputs/dp_ucvla/${RUN}/step-${STEP}/ucvla_weights.pt" \
     --chunk_weights data/chunk_weights.pt \
     --config        configs/dp_ucvla.yaml \
-    --data_dir      data/ \
-    --val_shards    "10,40,70"
+    --data_dir      data/
