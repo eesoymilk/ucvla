@@ -102,7 +102,7 @@ def main() -> None:
         print(f"Val shards: {[os.path.basename(s) for s in val_shards]}")
     val_ds = get_val_dataset(shards_dir, clip_transform, cfg["state_dim"], val_shards)
     val_loader = torch.utils.data.DataLoader(
-        val_ds, batch_size=args.batch_size, collate_fn=collate_fn, num_workers=2,
+        val_ds, batch_size=args.batch_size, collate_fn=collate_fn, num_workers=0,
     )
 
     # ------------------------------------------------------------------ #
