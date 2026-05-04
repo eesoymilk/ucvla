@@ -146,15 +146,31 @@ def main() -> None:
 
             clip_tokens = clip(images)
 
-            # Generate predictions under each user bias on the same input
+            # Generate predictions under each user bias on the same input.
+            # CRITICAL: share the starting noise across users so the divergence
+            # we measure is purely from the bias, not from independent rollouts.
             preds: list[torch.Tensor] = []  # each (B, T, action_dim)
+            num_steps = runner.num_inference_steps
+            step_size = 1.0 / num_steps
             for uid in range(n_users):
                 uid_tensor = torch.full((B,), uid, device=device, dtype=torch.long)
                 acc = torch.zeros(B, T, cfg["action_dim"], device=device, dtype=dtype)
-                for _ in range(args.n_rollouts):
-                    acc += runner.predict_action(
-                        clip_tokens=clip_tokens, state=states, user_id=uid_tensor,
+                for r in range(args.n_rollouts):
+                    # Same seed across users for rollout r → shared noise init
+                    g = torch.Generator(device=device).manual_seed(bi * 10_000 + r)
+                    x = torch.randn(
+                        B, T, cfg["action_dim"],
+                        device=device, dtype=dtype, generator=g,
                     )
+                    for i in range(num_steps):
+                        t_step = torch.full((B,), i * step_size, device=device, dtype=dtype)
+                        vel = runner.model(
+                            noisy_action=x, t=t_step,
+                            clip_tokens=clip_tokens, state=states,
+                            user_id=uid_tensor,
+                        )
+                        x = x + vel * step_size
+                    acc += x
                 preds.append(acc / args.n_rollouts)
 
             # Per-frame L2 divergence per pair: (B, T)
